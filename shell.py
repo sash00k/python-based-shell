@@ -12,12 +12,18 @@ def pwd(output: TextIO) -> None:
 
 def cd(path: str, output: TextIO) -> None:
     new_path = Path(path).resolve()
-    os.chdir(new_path)
+    if new_path.is_dir():
+        os.chdir(new_path)
+    else:
+        raise ValueError(f'{path} directory not found')
 
 
 def mkdir(path: str, output: TextIO) -> None:
     path_to_new_dir = Path(path).resolve()
-    os.makedirs(path_to_new_dir)
+    if not path_to_new_dir.is_dir():
+        os.makedirs(path_to_new_dir)
+    else:
+        raise ValueError(f'directory {path} already exists')
 
 
 def ls(args: list, output: TextIO) -> None:
@@ -28,23 +34,26 @@ def ls(args: list, output: TextIO) -> None:
 def cat(args: list, output: TextIO, direction: str = 'forward') -> None:
     files_paths = map(lambda x: Path(x).resolve(), args)
     for file_path in files_paths:
-        with open(file_path, 'r') as file:
-            match direction:
-                case 'forward':
-                    result = file.readlines()
-                case 'backwards':
-                    result = file.readlines()[::-1]
-            for cur_line in result:
-                print(cur_line, end='', file=output)
+        if file_path.is_file():
+            with open(file_path, 'r') as file:
+                result = file.readlines() if direction == 'forward' else file.readlines()[::-1]
+                for cur_line in result:
+                    print(cur_line, end='', file=output)
+        else:
+            raise ValueError(f'{file_path} file not found')
 
 
-def check_out_file(string: str, cur_out_stream: TextIO) -> (str, TextIO):
-    if '>' in string:
+def check_out_file(string: str, cur_out_stream: TextIO) -> (str, TextIO, bool):
+    redirect_symbols_count = string.count('>')
+    if redirect_symbols_count in (1, 2):
+        flag = 'w' if redirect_symbols_count == 1 else 'a'
         delimiter = string.find('>')
         command = string[:delimiter]
-        cur_out_stream = open(Path(string.replace('>', '')[delimiter:].strip()).resolve(), 'a')
-    else:
+        cur_out_stream = open(Path(string.replace('>', '')[delimiter:].strip()).resolve(), flag)
+    elif redirect_symbols_count == 0:
         command = string
+    else:
+        raise ValueError('incorrect redirect syntax')
     return command, cur_out_stream
 
 
@@ -101,25 +110,31 @@ def grep(args: list, output: TextIO) -> None:
 
 def solution(script: TextIO, output: TextIO) -> None:
     for cur_line in script.readlines():
-        command, cur_output = check_out_file(string=cur_line, cur_out_stream=output)
-        command = command.split()
-        match command[0], command[1:]:
-            case 'pwd', _:
-                pwd(output=cur_output)
-            case 'cd', args:
-                cd(path=args[0], output=cur_output)
-            case 'mkdir', args:
-                mkdir(path=args[0], output=cur_output)
-            case 'ls', args:
-                ls(args=args, output=cur_output)
-            case 'cat', args:
-                cat(args=args, output=cur_output, direction='forward')
-            case 'tac', args:
-                cat(args=args, output=cur_output, direction='backwards')
-            case 'grep', args:
-                grep(args=args, output=cur_output)
-            case _:
-                print(f'unknown command "{command[0]}"', file=cur_output)
+        input_line, cur_output_stream = check_out_file(string=cur_line, cur_out_stream=output)
+        input_line = input_line.split()
+        command, args = input_line[0], input_line[1:]
+        try:
+            match command:
+                case 'pwd':
+                    pwd(output=cur_output_stream)
+                case 'cd':
+                    cd(path=args[0], output=cur_output_stream)
+                case 'mkdir':
+                    mkdir(path=args[0], output=cur_output_stream)
+                case 'ls':
+                    ls(args=args, output=cur_output_stream)
+                case 'cat':
+                    cat(args=args, output=cur_output_stream, direction='forward')
+                case 'tac':
+                    cat(args=args, output=cur_output_stream, direction='backwards')
+                case 'grep':
+                    grep(args=args, output=cur_output_stream)
+                case _:
+                    print(f'unknown command "{command}"', file=cur_output_stream)
+        except ValueError as invalid_input:
+            print(invalid_input)
+        except IndexError:
+            print(f'perhaps command "{command}" needs more arguments')
 
 
 if __name__ == '__main__':
